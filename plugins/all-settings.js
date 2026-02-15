@@ -149,7 +149,7 @@ async(conn, mek, m, { args, isOwner, reply, botNumber, config }) => {
     } else if (value === 'off' || value === 'false') {
         await updateConfig('READ_MESSAGE', 'false', botNumber, config, reply);
     } else {
-        reply(`*CURRENT: ❯ ${config.READ_MESSAGE}*\n*Messages will be auto-marked as read when enabled.* `));
+       reply(`*CURRENT: ❯ ${config.READ_MESSAGE}*\n*Messages will be auto-marked as read when enabled.* `);
     }
 });
 
