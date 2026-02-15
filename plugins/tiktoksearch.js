@@ -1,5 +1,5 @@
 const axios = require("axios");
-const { cmd } = require("../command");
+const { cmd } = require("../sila");
 
 // =============================================================
 // 📌 TIKTOK DOWNLOADER COMMAND
