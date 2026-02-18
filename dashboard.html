@@ -3,317 +3,167 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>👑 SILA MD - Dashboard 👑</title>
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Rajdhani:wght@300;500&display=swap" rel="stylesheet">
+    <title>👑 SILA MD - Dashboard</title>
     <style>
-        /* Same styles as pair.html dashboard section */
         :root {
             --primary: #00f3ff;
             --secondary: #bc13fe;
             --bg: #050505;
-            --glass: rgba(255, 255, 255, 0.05);
             --success: #00ff88;
             --danger: #ff3366;
         }
-
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
-
         body {
-            background-color: var(--bg);
-            font-family: 'Rajdhani', sans-serif;
+            background: var(--bg);
             color: #fff;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            position: relative;
+            font-family: 'Arial', sans-serif;
+            margin: 0;
             padding: 20px;
+            min-height: 100vh;
         }
-
-        body::before {
-            content: '';
-            position: fixed;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: 
-                linear-gradient(rgba(0, 243, 255, 0.1) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(0, 243, 255, 0.1) 1px, transparent 1px);
-            background-size: 40px 40px;
-            animation: gridMove 20s linear infinite;
-            z-index: -1;
-            opacity: 0.3;
-        }
-
-        @keyframes gridMove {
-            0% { background-position: 0 0; }
-            100% { background-position: 0 400px; }
-        }
-
         .container {
-            background: var(--glass);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(0, 243, 255, 0.3);
-            padding: 3rem;
-            border-radius: 0px;
-            width: 100%;
             max-width: 800px;
-            text-align: center;
-            box-shadow: 0 0 30px rgba(0, 243, 255, 0.1);
-            position: relative;
-            clip-path: polygon(
-                10% 0, 100% 0, 100% 90%, 90% 100%, 0 100%, 0 10%
-            );
+            margin: auto;
         }
-
-        .corner {
-            position: absolute;
-            width: 20px;
-            height: 20px;
-            border: 2px solid var(--primary);
-        }
-        .tl { top: 0; left: 0; border-right: none; border-bottom: none; }
-        .tr { top: 0; right: 0; border-left: none; border-bottom: none; }
-        .bl { bottom: 0; left: 0; border-right: none; border-top: none; }
-        .br { bottom: 0; right: 0; border-left: none; border-top: none; }
-
-        h1 {
-            font-family: 'Orbitron', sans-serif;
-            font-size: 2.5rem;
-            color: var(--primary);
-            text-shadow: 0 0 10px var(--primary);
-            margin-bottom: 10px;
-            letter-spacing: 2px;
-        }
-
-        h2 {
-            font-family: 'Orbitron', sans-serif;
-            font-size: 1.5rem;
-            color: var(--secondary);
-            margin-bottom: 20px;
-        }
-
         .header {
             display: flex;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 30px;
             padding-bottom: 15px;
-            border-bottom: 1px solid rgba(0, 243, 255, 0.3);
+            border-bottom: 1px solid var(--primary);
         }
-
         .user-info {
-            font-size: 1rem;
             color: var(--primary);
+            font-size: 1.1rem;
         }
-
-        .menu-container {
+        .menu {
             position: relative;
         }
-
         .menu-dots {
             font-size: 24px;
             cursor: pointer;
             color: var(--primary);
             padding: 10px;
             border: 1px solid var(--primary);
+            border-radius: 5px;
             width: 40px;
             height: 40px;
             display: flex;
             align-items: center;
             justify-content: center;
-            border-radius: 5px;
         }
-
         .menu-dropdown {
             position: absolute;
             right: 0;
             top: 50px;
-            background: rgba(0, 0, 0, 0.9);
+            background: #111;
             border: 1px solid var(--primary);
             min-width: 200px;
-            z-index: 1000;
             display: none;
+            z-index: 100;
         }
-
         .menu-dropdown.show {
             display: block;
         }
-
         .menu-item {
             padding: 12px 15px;
             cursor: pointer;
-            border-bottom: 1px solid rgba(0, 243, 255, 0.2);
-            transition: 0.3s;
-            text-align: left;
-            color: #fff;
+            border-bottom: 1px solid #333;
         }
-
         .menu-item:hover {
             background: var(--primary);
             color: #000;
         }
-
-        .menu-item.danger:hover {
-            background: var(--danger);
+        .pair-section {
+            background: #111;
+            border: 1px solid var(--primary);
+            padding: 20px;
+            margin-bottom: 30px;
+            border-radius: 5px;
         }
-
-        .input-group {
-            position: relative;
-            margin-bottom: 25px;
+        h2 {
+            color: var(--secondary);
+            margin-top: 0;
         }
-
         input {
             width: 100%;
-            background: rgba(0, 0, 0, 0.5);
+            padding: 12px;
+            margin: 10px 0;
+            background: #222;
             border: 1px solid #333;
             border-bottom: 2px solid var(--primary);
             color: var(--primary);
-            padding: 15px;
-            font-family: 'Orbitron', sans-serif;
-            font-size: 1rem;
-            text-align: center;
-            outline: none;
-            transition: 0.3s;
+            box-sizing: border-box;
         }
-
-        input:focus {
-            box-shadow: 0 0 15px rgba(0, 243, 255, 0.2);
-            background: rgba(0, 243, 255, 0.05);
-        }
-
         button {
-            width: 100%;
-            padding: 15px;
+            padding: 12px 20px;
             background: transparent;
-            color: var(--primary);
             border: 1px solid var(--primary);
-            font-family: 'Orbitron', sans-serif;
-            font-weight: bold;
-            font-size: 1rem;
+            color: var(--primary);
             cursor: pointer;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            position: relative;
-            overflow: hidden;
+            font-weight: bold;
             transition: 0.3s;
-            margin-bottom: 15px;
         }
-
-        button::before {
-            content: '';
-            position: absolute;
-            top: 0; left: -100%;
-            width: 100%;
-            height: 100%;
-            background: var(--primary);
-            transition: 0.3s;
-            z-index: -1;
-        }
-
         button:hover {
+            background: var(--primary);
             color: #000;
-            box-shadow: 0 0 20px var(--primary);
+            box-shadow: 0 0 10px var(--primary);
         }
-
-        button:hover::before {
-            left: 0;
+        .code-display {
+            font-size: 2rem;
+            color: var(--secondary);
+            border: 1px dashed var(--secondary);
+            padding: 15px;
+            margin: 10px 0;
+            text-align: center;
+            cursor: pointer;
         }
-
         .bots-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
             gap: 20px;
-            margin: 20px 0;
+            margin-top: 20px;
         }
-
         .bot-card {
-            background: rgba(0, 0, 0, 0.5);
-            border: 1px solid rgba(0, 243, 255, 0.3);
+            background: #111;
+            border: 1px solid #333;
             padding: 15px;
             border-radius: 5px;
         }
-
         .bot-card.connected {
             border-color: var(--success);
         }
-
         .bot-number {
             font-size: 1.2rem;
             font-weight: bold;
             color: var(--primary);
             margin-bottom: 10px;
         }
-
-        .bot-status {
-            font-size: 0.9rem;
-            margin-bottom: 10px;
+        .status {
             padding: 5px;
-            border-radius: 3px;
+            margin: 10px 0;
+            text-align: center;
         }
-
-        .status-connected {
-            color: var(--success);
+        .connected .status {
+            background: rgba(0, 255, 136, 0.1);
             border: 1px solid var(--success);
+            color: var(--success);
         }
-
-        .status-disconnected {
-            color: var(--danger);
+        .disconnected .status {
+            background: rgba(255, 51, 102, 0.1);
             border: 1px solid var(--danger);
+            color: var(--danger);
         }
-
         .bot-actions {
             display: flex;
             gap: 10px;
             margin-top: 15px;
         }
-
         .bot-actions button {
+            flex: 1;
             padding: 8px;
-            font-size: 0.8rem;
-            margin: 0;
-        }
-
-        .code-display {
-            font-family: 'Orbitron', sans-serif;
-            font-size: 2rem;
-            color: var(--secondary);
-            text-shadow: 0 0 15px var(--secondary);
-            letter-spacing: 5px;
-            border: 1px dashed var(--secondary);
-            padding: 10px 20px;
-            margin-top: 10px;
-            cursor: pointer;
-            position: relative;
-        }
-        
-        .code-display:active {
-            transform: scale(0.98);
-        }
-
-        .loader {
-            border: 3px solid rgba(255,255,255,0.1);
-            border-top: 3px solid var(--primary);
-            border-radius: 50%;
-            width: 30px;
-            height: 30px;
-            animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        .error-message {
-            color: var(--danger);
             font-size: 0.9rem;
-            margin-top: 5px;
-            text-shadow: 0 0 5px var(--danger);
         }
-
         .modal {
             display: none;
             position: fixed;
@@ -321,18 +171,16 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0,0,0,0.8);
+            background: rgba(0,0,0,0.9);
             justify-content: center;
             align-items: center;
-            z-index: 1001;
+            z-index: 1000;
         }
-
         .modal.show {
             display: flex;
         }
-
         .modal-content {
-            background: var(--bg);
+            background: #111;
             border: 1px solid var(--primary);
             padding: 30px;
             max-width: 500px;
@@ -340,128 +188,91 @@
             max-height: 80vh;
             overflow-y: auto;
         }
-
         .feature-item {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 8px 0;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
+            padding: 10px 0;
+            border-bottom: 1px solid #333;
         }
-
-        .toggle-switch {
-            position: relative;
+        .toggle {
             width: 50px;
             height: 24px;
             background: #333;
             border-radius: 12px;
+            position: relative;
             cursor: pointer;
-            transition: 0.3s;
         }
-
-        .toggle-switch.active {
+        .toggle.active {
             background: var(--success);
         }
-
         .toggle-slider {
-            position: absolute;
             width: 20px;
             height: 20px;
             background: #fff;
             border-radius: 50%;
+            position: absolute;
             top: 2px;
             left: 2px;
             transition: 0.3s;
         }
-
-        .toggle-switch.active .toggle-slider {
+        .toggle.active .toggle-slider {
             left: 28px;
         }
-
-        .dev-links {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            padding: 15px;
+        .loader {
+            border: 3px solid #333;
+            border-top: 3px solid var(--primary);
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 10px auto;
         }
-
-        .dev-link {
-            padding: 12px;
-            background: rgba(0, 243, 255, 0.1);
-            border: 1px solid var(--primary);
-            color: #fff;
-            text-decoration: none;
-            text-align: center;
-            transition: 0.3s;
-        }
-
-        .dev-link:hover {
-            background: var(--primary);
-            color: #000;
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="corner tl"></div>
-        <div class="corner tr"></div>
-        <div class="corner bl"></div>
-        <div class="corner br"></div>
-
         <div class="header">
             <div class="user-info" id="user-name">Loading...</div>
-            <div class="menu-container">
+            <div class="menu">
                 <div class="menu-dots" onclick="toggleMenu()">⋮</div>
-                <div class="menu-dropdown" id="menu-dropdown">
-                    <div class="menu-item" onclick="logout()">🚪 LOGOUT</div>
-                    <div class="menu-item" onclick="showDevelopers()">👨‍💻 DEVELOPERS</div>
+                <div class="menu-dropdown" id="menu">
+                    <div class="menu-item" onclick="logout()">🚪 Logout</div>
+                    <div class="menu-item" onclick="window.open('https://wa.me/255768026718')">👨‍💻 Contact XIDS</div>
+                    <div class="menu-item" onclick="window.open('https://wa.me/255789661031')">🤖 Contact SILA</div>
+                    <div class="menu-item" onclick="window.open('https://whatsapp.com/channel/0029Vb7PKs490x347h5qTM1q')">📢 Follow Channel</div>
+                    <div class="menu-item" onclick="window.open('https://chat.whatsapp.com/FX7AtNdP84pJ0IBnv4CM3B')">👥 Join Group</div>
+                    <div class="menu-item" onclick="window.open('https://t.me/sila_tech2')">✈️ Telegram</div>
+                    <div class="menu-item" onclick="window.open('https://github.com/Sila-Md/SILA-MD')">💻 GitHub</div>
                 </div>
             </div>
         </div>
 
-        <div style="position: relative; padding: 3px; background: linear-gradient(90deg, #00ffff, #ff00ff, #00ffff); background-size: 200%; animation: rgbMove 2s linear infinite; border-radius: 10px; margin-bottom: 20px;">
-            <div style="background: #000; padding: 20px; border-radius: 8px;">
-                <h2 style="font-size: 1.2rem;">🔗 PAIR NEW BOT</h2>
-                <div class="input-group">
-                    <input type="text" id="pair-number" placeholder="+255XXXXXXXXX" autocomplete="off">
-                </div>
-                <button onclick="pairBot()">♥️ PAIR BOT ♥️</button>
-                <div id="pair-result"></div>
-            </div>
+        <div class="pair-section">
+            <h2>🔗 Pair New Bot</h2>
+            <input type="text" id="pair-number" placeholder="Enter number (e.g., 255768026718)">
+            <button onclick="pairBot()">Generate Pairing Code</button>
+            <div id="pair-result"></div>
         </div>
 
-        <h2 style="font-size: 1.2rem;">🤖 YOUR BOTS</h2>
+        <h2>🤖 Your Bots</h2>
         <div id="bots-list" class="bots-grid"></div>
     </div>
 
-    <!-- Developers Modal -->
-    <div id="developers-modal" class="modal">
-        <div class="modal-content">
-            <h2 style="margin-bottom: 20px;">👨‍💻 DEVELOPERS</h2>
-            <div class="dev-links">
-                <a href="https://wa.me/255768026718" target="_blank" class="dev-link">📱 CONTACT XIDS</a>
-                <a href="https://wa.me/255789661031" target="_blank" class="dev-link">🤖 CONTACT SILA</a>
-                <a href="https://whatsapp.com/channel/0029Vb7PKs490x347h5qTM1q" target="_blank" class="dev-link">📢 FOLLOW CHANNEL</a>
-                <a href="https://chat.whatsapp.com/FX7AtNdP84pJ0IBnv4CM3B" target="_blank" class="dev-link">👥 JOIN GROUP</a>
-                <a href="https://t.me/sila_tech2" target="_blank" class="dev-link">✈️ TELEGRAM</a>
-                <a href="https://github.com/Sila-Md/SILA-MD" target="_blank" class="dev-link">💻 GITHUB</a>
-            </div>
-            <button onclick="closeModal()" style="margin-top: 20px;">CLOSE</button>
-        </div>
-    </div>
-
-    <!-- Bot Config Modal -->
     <div id="config-modal" class="modal">
         <div class="modal-content">
-            <h2 style="margin-bottom: 20px;">⚙️ BOT CONFIGURATION</h2>
+            <h2>⚙️ Bot Configuration</h2>
             <div id="config-content"></div>
-            <button onclick="closeConfigModal()" style="margin-top: 20px;">CLOSE</button>
+            <button onclick="closeModal()" style="margin-top:20px">Close</button>
         </div>
     </div>
 
     <script>
         let currentUser = null;
-        let botsData = [];
 
         window.onload = function() {
             loadDashboard();
@@ -477,34 +288,31 @@
                 
                 const data = await res.json();
                 currentUser = data.user;
-                botsData = data.numbers;
-                
                 document.getElementById('user-name').innerHTML = `👑 ${currentUser.username || currentUser.full_name || 'User'}`;
-                renderBots();
+                renderBots(data.numbers);
             } catch (e) {
-                console.error('Failed to load dashboard:', e);
                 window.location.href = '/';
             }
         }
 
-        function renderBots() {
+        function renderBots(bots) {
             const container = document.getElementById('bots-list');
             
-            if (botsData.length === 0) {
-                container.innerHTML = '<div style="text-align: center; padding: 20px; color: #aaa;">No bots connected yet. Pair a bot above.</div>';
+            if (bots.length === 0) {
+                container.innerHTML = '<div style="text-align:center; color:#666">No bots connected yet</div>';
                 return;
             }
 
-            container.innerHTML = botsData.map(bot => `
-                <div class="bot-card ${bot.connectionStatus === 'connected' ? 'connected' : ''}">
+            container.innerHTML = bots.map(bot => `
+                <div class="bot-card ${bot.connectionStatus === 'connected' ? 'connected' : 'disconnected'}">
                     <div class="bot-number">${bot.number}</div>
-                    <div class="bot-status ${bot.connectionStatus === 'connected' ? 'status-connected' : 'status-disconnected'}">
-                        ${bot.connectionStatus === 'connected' ? '● CONNECTED' : '○ DISCONNECTED'}
+                    <div class="status">
+                        ${bot.connectionStatus === 'connected' ? '🟢 Connected' : '🔴 Disconnected'}
                         ${bot.connectionStatus === 'connected' ? `<br>Uptime: ${bot.uptime}s` : ''}
                     </div>
                     <div class="bot-actions">
-                        <button class="success" onclick="showBotConfig('${bot.number}')" style="flex:1">⚙️ CONFIG</button>
-                        <button class="danger" onclick="disconnectBot('${bot.number}')" style="flex:1">🗑️ REMOVE</button>
+                        <button onclick="showConfig('${bot.number}')">⚙️ Config</button>
+                        <button onclick="disconnectBot('${bot.number}')" style="border-color:#ff3366; color:#ff3366">🗑️ Remove</button>
                     </div>
                 </div>
             `).join('');
@@ -515,7 +323,7 @@
             const resultDiv = document.getElementById('pair-result');
 
             if (!number) {
-                resultDiv.innerHTML = '<div class="error-message">Number required</div>';
+                resultDiv.innerHTML = '<div style="color:#ff3366">Number required</div>';
                 return;
             }
 
@@ -527,29 +335,28 @@
 
                 if (data.code) {
                     resultDiv.innerHTML = `
-                        <div style="font-size:0.8rem; color:#aaa">PAIRING CODE:</div>
+                        <div style="color:#aaa; margin:10px 0">Pairing Code:</div>
                         <div class="code-display" onclick="copyCode('${data.code}')">${data.code}</div>
                     `;
                 } else if (data.status === 'already_connected') {
-                    resultDiv.innerHTML = '<div class="error-message">Bot already connected</div>';
+                    resultDiv.innerHTML = '<div style="color:#ff3366">Bot already connected</div>';
                 } else {
-                    resultDiv.innerHTML = '<div class="error-message">Connection failed</div>';
+                    resultDiv.innerHTML = '<div style="color:#ff3366">Connection failed</div>';
                 }
             } catch (e) {
-                resultDiv.innerHTML = '<div class="error-message">Server error</div>';
+                resultDiv.innerHTML = '<div style="color:#ff3366">Server error</div>';
             }
         }
 
-        async function showBotConfig(number) {
+        async function showConfig(number) {
             try {
                 const res = await fetch(`/api/bot/${number}/config`);
-                if (!res.ok) throw new Error('Failed to load config');
-                
                 const config = await res.json();
                 
-                let html = `<h3>Bot: ${number}</h3>`;
+                let html = `<h3>${number}</h3>`;
                 
                 const features = [
+                    { key: 'CHATBOT_ENABLED', label: 'AI Chatbot' },
                     { key: 'AUTO_RECORDING', label: 'Auto Recording' },
                     { key: 'AUTO_TYPING', label: 'Auto Typing' },
                     { key: 'ANTI_CALL', label: 'Anti Call' },
@@ -564,7 +371,7 @@
                     html += `
                         <div class="feature-item">
                             <span>${feature.label}</span>
-                            <div class="toggle-switch ${value ? 'active' : ''}" onclick="toggleFeature('${number}', '${feature.key}', ${!value})">
+                            <div class="toggle ${value ? 'active' : ''}" onclick="toggleFeature('${number}', '${feature.key}', ${!value})">
                                 <div class="toggle-slider"></div>
                             </div>
                         </div>
@@ -585,12 +392,9 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ [feature]: newValue.toString() })
                 });
-                
-                if (res.ok) {
-                    showBotConfig(number);
-                }
+                if (res.ok) showConfig(number);
             } catch (e) {
-                alert('Failed to update config');
+                alert('Failed to update');
             }
         }
 
@@ -599,11 +403,7 @@
             
             try {
                 const res = await fetch(`/api/bot/${number}/disconnect`, { method: 'POST' });
-                if (res.ok) {
-                    await loadDashboard();
-                } else {
-                    alert('Failed to disconnect');
-                }
+                if (res.ok) loadDashboard();
             } catch (e) {
                 alert('Failed to disconnect');
             }
@@ -613,33 +413,18 @@
             navigator.clipboard.writeText(code);
             const display = document.querySelector('.code-display');
             if (display) {
-                const originalText = display.innerText;
-                display.innerText = "COPIED!";
-                display.style.borderColor = "#0f0";
-                display.style.color = "#0f0";
-                
-                setTimeout(() => {
-                    display.innerText = originalText;
-                    display.style.borderColor = "var(--secondary)";
-                    display.style.color = "var(--secondary)";
-                }, 1500);
+                display.innerText = 'COPIED!';
+                display.style.borderColor = '#00ff88';
+                display.style.color = '#00ff88';
+                setTimeout(() => loadDashboard(), 1500);
             }
         }
 
         function toggleMenu() {
-            document.getElementById('menu-dropdown').classList.toggle('show');
-        }
-
-        function showDevelopers() {
-            document.getElementById('menu-dropdown').classList.remove('show');
-            document.getElementById('developers-modal').classList.add('show');
+            document.getElementById('menu').classList.toggle('show');
         }
 
         function closeModal() {
-            document.getElementById('developers-modal').classList.remove('show');
-        }
-
-        function closeConfigModal() {
             document.getElementById('config-modal').classList.remove('show');
         }
 
@@ -648,9 +433,9 @@
             window.location.href = '/';
         }
 
-        window.onclick = function(event) {
-            if (!event.target.matches('.menu-dots') && !event.target.matches('.menu-dots *')) {
-                document.getElementById('menu-dropdown').classList.remove('show');
+        window.onclick = function(e) {
+            if (!e.target.matches('.menu-dots')) {
+                document.getElementById('menu').classList.remove('show');
             }
         }
     </script>
