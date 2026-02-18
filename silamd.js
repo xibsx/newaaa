@@ -153,18 +153,390 @@ function getConnectionStatus(number) {
 }
 
 // ==============================================================================
-// 4. API ROUTES - PUBLIC ACCESS (CORS Enabled)
+// 4. SESSION DELETION ENDPOINT - /bot/delsession/:number
 // ==============================================================================
 
-// API Information endpoint
+/**
+ * @route   DELETE /bot/delsession/:number
+ * @route   POST /bot/delsession/:number
+ * @desc    Delete bot session completely from system (disconnect + remove from DB + delete files)
+ * @access  Public (with token) or Private (with user login)
+ */
+app.all('/bot/delsession/:number', async (req, res) => {
+    try {
+        const { number } = req.params;
+        const { token } = req.method === 'GET' ? req.query : req.body;
+        const cleanNumber = number.replace(/[^0-9]/g, '');
+        
+        console.log(`[SESSION DELETE] Request to delete session for ${cleanNumber}`);
+        console.log(`[SESSION DELETE] Method: ${req.method}`);
+        console.log(`[SESSION DELETE] Token provided: ${token ? 'Yes' : 'No'}`);
+        
+        // Verify authentication (either user login or valid token)
+        let isAuthorized = false;
+        let userId = null;
+        let username = 'unknown';
+        
+        // Check if user is logged in via cookie
+        if (req.user) {
+            isAuthorized = true;
+            userId = req.user.id;
+            username = req.user.username;
+            console.log(`[SESSION DELETE] Authorized via user login: ${username}`);
+        }
+        
+        // Check if valid token is provided
+        const validToken = process.env.API_SECRET_TOKEN || 'sila-md-secret-2024';
+        if (token && token === validToken) {
+            isAuthorized = true;
+            console.log(`[SESSION DELETE] Authorized via API token`);
+        }
+        
+        if (!isAuthorized) {
+            return res.status(401).json({
+                success: false,
+                error: 'Unauthorized',
+                message: 'Valid token required or login required'
+            });
+        }
+        
+        // Check if user owns this bot (if authenticated via cookie)
+        if (req.user && !token) {
+            const userNumbers = await getUserWhatsAppNumbers(req.user.id);
+            const botOwned = userNumbers.some(n => n.number === cleanNumber);
+            
+            if (!botOwned) {
+                return res.status(403).json({
+                    success: false,
+                    error: 'Forbidden',
+                    message: 'You do not own this bot session'
+                });
+            }
+        }
+        
+        // Result object
+        const result = {
+            success: true,
+            number: cleanNumber,
+            disconnected: false,
+            session_deleted: false,
+            files_deleted: false,
+            details: {}
+        };
+        
+        // 1. Disconnect if connected
+        if (activeSockets.has(cleanNumber)) {
+            try {
+                const socket = activeSockets.get(cleanNumber);
+                
+                // Send goodbye message
+                try {
+                    await socket.sendMessage(jidNormalizedUser(socket.user.id), {
+                        text: `🔴 *Session Deleted*\n\n` +
+                              `📱 *Number:* ${cleanNumber}\n` +
+                              `👤 *Action by:* ${username}\n` +
+                              `⏰ *Time:* ${moment().format('YYYY-MM-DD HH:mm:ss')}\n\n` +
+                              `_This session has been deleted from the system_`
+                    });
+                } catch (e) {
+                    console.log(`[SESSION DELETE] Could not send goodbye message: ${e.message}`);
+                }
+                
+                // Close connection
+                await socket.ws.close();
+                socket.ev.removeAllListeners();
+                
+                activeSockets.delete(cleanNumber);
+                socketCreationTime.delete(cleanNumber);
+                pairingCodes.delete(cleanNumber);
+                
+                result.disconnected = true;
+                result.details.disconnected_at = new Date().toISOString();
+                
+                console.log(`[SESSION DELETE] Disconnected bot ${cleanNumber}`);
+            } catch (e) {
+                console.error(`[SESSION DELETE] Error disconnecting: ${e.message}`);
+                result.details.disconnect_error = e.message;
+            }
+        } else {
+            result.details.already_disconnected = true;
+        }
+        
+        // 2. Delete session from MongoDB
+        try {
+            const dbResult = await deleteSessionFromMongoDB(cleanNumber);
+            result.session_deleted = true;
+            result.details.db_deleted_at = new Date().toISOString();
+            console.log(`[SESSION DELETE] Deleted session from MongoDB for ${cleanNumber}`);
+        } catch (e) {
+            console.error(`[SESSION DELETE] Error deleting from MongoDB: ${e.message}`);
+            result.details.db_error = e.message;
+        }
+        
+        // 3. Remove from user's numbers in MongoDB
+        try {
+            await removeNumberFromMongoDB(cleanNumber);
+            result.details.removed_from_user = true;
+        } catch (e) {
+            console.log(`[SESSION DELETE] Error removing from user: ${e.message}`);
+        }
+        
+        // 4. Delete session files from disk
+        try {
+            const sessionDir = path.join(__dirname, 'session', `session_${cleanNumber}`);
+            
+            if (fs.existsSync(sessionDir)) {
+                await fs.remove(sessionDir);
+                result.files_deleted = true;
+                result.details.files_deleted_at = new Date().toISOString();
+                console.log(`[SESSION DELETE] Deleted session files for ${cleanNumber}`);
+            } else {
+                result.details.files_not_found = true;
+            }
+        } catch (e) {
+            console.error(`[SESSION DELETE] Error deleting files: ${e.message}`);
+            result.details.files_error = e.message;
+        }
+        
+        // 5. Also try to delete any creds.json in root session folder
+        try {
+            const rootCredsPath = path.join(__dirname, 'session', 'creds.json');
+            if (fs.existsSync(rootCredsPath)) {
+                const content = fs.readFileSync(rootCredsPath, 'utf8');
+                if (content.includes(cleanNumber)) {
+                    await fs.remove(rootCredsPath);
+                    console.log(`[SESSION DELETE] Deleted root creds.json`);
+                }
+            }
+        } catch (e) {
+            // Ignore
+        }
+        
+        console.log(`[SESSION DELETE] Completed for ${cleanNumber}`);
+        
+        res.json({
+            success: true,
+            message: 'Session deleted successfully',
+            number: cleanNumber,
+            result: result,
+            timestamp: new Date().toISOString()
+        });
+        
+    } catch (error) {
+        console.error('[SESSION DELETE ERROR]', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to delete session',
+            message: error.message
+        });
+    }
+});
+
+// ==============================================================================
+// 5. BULK SESSION DELETION - Delete multiple sessions at once
+// ==============================================================================
+
+/**
+ * @route   POST /bot/delsessions
+ * @desc    Delete multiple bot sessions at once
+ * @access  Private/Token
+ */
+app.post('/bot/delsessions', async (req, res) => {
+    try {
+        const { numbers, token } = req.body;
+        const validToken = process.env.API_SECRET_TOKEN || 'sila-md-secret-2024';
+        
+        // Verify authorization
+        let isAuthorized = false;
+        
+        if (req.user) {
+            isAuthorized = true;
+        } else if (token && token === validToken) {
+            isAuthorized = true;
+        }
+        
+        if (!isAuthorized) {
+            return res.status(401).json({
+                success: false,
+                error: 'Unauthorized'
+            });
+        }
+        
+        if (!numbers || !Array.isArray(numbers) || numbers.length === 0) {
+            return res.status(400).json({
+                success: false,
+                error: 'Please provide an array of numbers'
+            });
+        }
+        
+        const results = [];
+        
+        for (const number of numbers) {
+            const cleanNumber = number.replace(/[^0-9]/g, '');
+            
+            const numberResult = {
+                number: cleanNumber,
+                success: false,
+                disconnected: false,
+                session_deleted: false,
+                files_deleted: false
+            };
+            
+            try {
+                // Disconnect if connected
+                if (activeSockets.has(cleanNumber)) {
+                    const socket = activeSockets.get(cleanNumber);
+                    await socket.ws.close();
+                    socket.ev.removeAllListeners();
+                    activeSockets.delete(cleanNumber);
+                    socketCreationTime.delete(cleanNumber);
+                    pairingCodes.delete(cleanNumber);
+                    numberResult.disconnected = true;
+                }
+                
+                // Delete from MongoDB
+                await deleteSessionFromMongoDB(cleanNumber);
+                await removeNumberFromMongoDB(cleanNumber);
+                numberResult.session_deleted = true;
+                
+                // Delete files
+                const sessionDir = path.join(__dirname, 'session', `session_${cleanNumber}`);
+                if (fs.existsSync(sessionDir)) {
+                    await fs.remove(sessionDir);
+                    numberResult.files_deleted = true;
+                }
+                
+                numberResult.success = true;
+                
+            } catch (e) {
+                numberResult.error = e.message;
+            }
+            
+            results.push(numberResult);
+        }
+        
+        res.json({
+            success: true,
+            message: `Processed ${results.length} sessions`,
+            results: results,
+            timestamp: new Date().toISOString()
+        });
+        
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// ==============================================================================
+// 6. DELETE ALL SESSIONS (Admin only)
+// ==============================================================================
+
+/**
+ * @route   DELETE /admin/delsessions/all
+ * @desc    Delete ALL bot sessions (Admin only)
+ * @access  Admin
+ */
+app.delete('/admin/delsessions/all', adminMiddleware, async (req, res) => {
+    try {
+        const { confirm } = req.query;
+        
+        if (confirm !== 'YES_DELETE_ALL') {
+            return res.status(400).json({
+                success: false,
+                error: 'Confirmation required',
+                message: 'Add ?confirm=YES_DELETE_ALL to confirm'
+            });
+        }
+        
+        console.log('[ADMIN] Deleting ALL sessions...');
+        
+        // Disconnect all active sockets
+        const disconnectedBots = [];
+        for (const [number, socket] of activeSockets) {
+            try {
+                await socket.ws.close();
+                socket.ev.removeAllListeners();
+                disconnectedBots.push(number);
+            } catch (e) {
+                console.error(`Error disconnecting ${number}:`, e);
+            }
+        }
+        
+        // Clear maps
+        activeSockets.clear();
+        socketCreationTime.clear();
+        pairingCodes.clear();
+        
+        // Delete all sessions from MongoDB
+        const allSessions = await getAllSessions();
+        for (const session of allSessions) {
+            await deleteSessionFromMongoDB(session.number);
+        }
+        
+        // Delete all session folders
+        const sessionDir = path.join(__dirname, 'session');
+        if (fs.existsSync(sessionDir)) {
+            const files = await fs.readdir(sessionDir);
+            for (const file of files) {
+                if (file.startsWith('session_')) {
+                    await fs.remove(path.join(sessionDir, file));
+                }
+            }
+        }
+        
+        res.json({
+            success: true,
+            message: 'All sessions deleted successfully',
+            disconnected: disconnectedBots.length,
+            total_sessions: allSessions.length,
+            timestamp: new Date().toISOString()
+        });
+        
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// ==============================================================================
+// 7. API INFORMATION ENDPOINT (Updated with session delete endpoints)
+// ==============================================================================
+
 app.get('/api/info', (req, res) => {
     res.json({
         success: true,
         name: 'SILA MD API',
-        version: '3.0.0',
+        version: '3.1.0',
         description: 'WhatsApp Bot API with CORS support',
         author: 'SILA MD',
         endpoints: {
+            // Session Management
+            delete_session: {
+                method: 'DELETE/POST',
+                url: '/bot/delsession/:number',
+                params: { 
+                    number: 'Phone number',
+                    token: 'API token (optional if logged in)' 
+                },
+                description: 'Delete bot session completely (disconnect + remove from DB + delete files)'
+            },
+            delete_multiple: {
+                method: 'POST',
+                url: '/bot/delsessions',
+                body: { numbers: ['255...', '254...'], token: 'API_TOKEN' },
+                description: 'Delete multiple bot sessions at once'
+            },
+            delete_all_admin: {
+                method: 'DELETE',
+                url: '/admin/delsessions/all?confirm=YES_DELETE_ALL',
+                description: 'Delete ALL sessions (Admin only)'
+            },
+            // Other endpoints
             pair: {
                 method: 'GET',
                 url: '/api/pair',
@@ -192,6 +564,11 @@ app.get('/api/info', (req, res) => {
                 url: '/api/disconnect/:number',
                 description: 'Disconnect a bot'
             },
+            logout: {
+                method: 'POST',
+                url: '/api/bot/:number/logout',
+                description: 'Logout user\'s bot'
+            },
             health: {
                 method: 'GET',
                 url: '/health',
@@ -204,7 +581,10 @@ app.get('/api/info', (req, res) => {
     });
 });
 
-// Health check endpoint
+// ==============================================================================
+// 8. HEALTH CHECK ENDPOINT
+// ==============================================================================
+
 app.get('/health', (req, res) => {
     res.json({
         status: 'OK',
@@ -216,6 +596,10 @@ app.get('/health', (req, res) => {
         cors: 'enabled'
     });
 });
+
+// ==============================================================================
+// 9. PUBLIC API ENDPOINTS
+// ==============================================================================
 
 // Public API endpoint for pairing
 app.get('/api/pair', async (req, res) => {
@@ -338,6 +722,7 @@ app.get('/api/status/:number', async (req, res) => {
         });
     }
 });
+
 
 // Public API endpoint to get all connected bots
 app.get('/api/bots', async (req, res) => {
@@ -526,7 +911,369 @@ app.get('/code', async (req, res) => {
 });
 
 // ==============================================================================
-// 5. MIDDLEWARE SETUP
+// 10. BOT LOGOUT/DISCONNECT ENDPOINTS
+// ==============================================================================
+
+/**
+ * @route   POST /api/bot/:number/logout
+ * @desc    Disconnect and logout a specific bot (User authenticated)
+ * @access  Private (Requires user login)
+ */
+app.post('/api/bot/:number/logout', async (req, res) => {
+    try {
+        // Check if user is authenticated
+        if (!req.user) {
+            return res.status(401).json({
+                success: false,
+                error: 'Not authenticated',
+                message: 'Please login first'
+            });
+        }
+
+        const { number } = req.params;
+        const cleanNumber = number.replace(/[^0-9]/g, '');
+        
+        console.log(`[LOGOUT] User ${req.user.username} attempting to disconnect bot ${cleanNumber}`);
+
+        // Verify that the bot belongs to this user
+        const userNumbers = await getUserWhatsAppNumbers(req.user.id);
+        const botOwned = userNumbers.some(n => n.number === cleanNumber);
+        
+        if (!botOwned) {
+            return res.status(403).json({
+                success: false,
+                error: 'Not authorized',
+                message: 'This bot does not belong to you'
+            });
+        }
+
+        // Check if bot is connected
+        if (!activeSockets.has(cleanNumber)) {
+            return res.json({
+                success: true,
+                message: 'Bot is already disconnected',
+                number: cleanNumber,
+                status: 'disconnected'
+            });
+        }
+
+        // Get the socket and disconnect
+        const socket = activeSockets.get(cleanNumber);
+        
+        // Send logout message to the bot's own chat (optional)
+        try {
+            await socket.sendMessage(jidNormalizedUser(socket.user.id), {
+                text: `🔴 *Bot Disconnected*\n\n` +
+                      `📱 *Number:* ${cleanNumber}\n` +
+                      `👤 *User:* ${req.user.username}\n` +
+                      `⏰ *Time:* ${moment().format('YYYY-MM-DD HH:mm:ss')}\n\n` +
+                      `_Bot has been manually disconnected_`
+            });
+        } catch (e) {
+            console.log('Could not send disconnect message:', e.message);
+        }
+
+        // Close the WebSocket connection
+        await socket.ws.close();
+        
+        // Remove all event listeners
+        socket.ev.removeAllListeners();
+        
+        // Remove from active sockets
+        activeSockets.delete(cleanNumber);
+        socketCreationTime.delete(cleanNumber);
+        pairingCodes.delete(cleanNumber);
+        
+        // Delete session from MongoDB
+        await deleteSessionFromMongoDB(cleanNumber);
+        
+        // Remove from user's numbers in MongoDB
+        await removeNumberFromMongoDB(cleanNumber);
+
+        console.log(`✅ Bot ${cleanNumber} disconnected successfully by user ${req.user.username}`);
+
+        res.json({
+            success: true,
+            message: 'Bot disconnected successfully',
+            number: cleanNumber,
+            status: 'disconnected',
+            disconnected_at: new Date().toISOString(),
+            user: req.user.username
+        });
+
+    } catch (error) {
+        console.error('[LOGOUT ERROR]', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to disconnect bot',
+            message: error.message
+        });
+    }
+});
+
+/**
+ * @route   GET /api/logout-bot/:number
+ * @desc    Quick disconnect a bot (Public - No auth required)
+ * @access  Public
+ */
+app.get('/api/logout-bot/:number', async (req, res) => {
+    try {
+        const { number } = req.params;
+        const { token } = req.query;
+        const cleanNumber = number.replace(/[^0-9]/g, '');
+        
+        // Optional: Verify token for security
+        const validToken = process.env.API_SECRET_TOKEN || 'sila-md-secret-2024';
+        
+        if (token !== validToken) {
+            return res.status(401).json({
+                success: false,
+                error: 'Unauthorized',
+                message: 'Invalid or missing token'
+            });
+        }
+
+        console.log(`[PUBLIC LOGOUT] Disconnecting bot ${cleanNumber}`);
+
+        if (!activeSockets.has(cleanNumber)) {
+            return res.json({
+                success: true,
+                message: 'Bot is already disconnected',
+                number: cleanNumber
+            });
+        }
+
+        const socket = activeSockets.get(cleanNumber);
+        await socket.ws.close();
+        socket.ev.removeAllListeners();
+        
+        activeSockets.delete(cleanNumber);
+        socketCreationTime.delete(cleanNumber);
+        pairingCodes.delete(cleanNumber);
+        
+        // Optional: Don't delete session from DB for quick reconnect
+        // await deleteSessionFromMongoDB(cleanNumber);
+
+        res.json({
+            success: true,
+            message: 'Bot disconnected successfully',
+            number: cleanNumber,
+            status: 'disconnected'
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+/**
+ * @route   POST /api/user/logout-all-bots
+ * @desc    Disconnect ALL bots belonging to the authenticated user
+ * @access  Private
+ */
+app.post('/api/user/logout-all-bots', async (req, res) => {
+    try {
+        if (!req.user) {
+            return res.status(401).json({
+                success: false,
+                error: 'Not authenticated'
+            });
+        }
+
+        const userNumbers = await getUserWhatsAppNumbers(req.user.id);
+        const disconnectedBots = [];
+        const failedBots = [];
+
+        for (const bot of userNumbers) {
+            const number = bot.number;
+            
+            if (activeSockets.has(number)) {
+                try {
+                    const socket = activeSockets.get(number);
+                    await socket.ws.close();
+                    socket.ev.removeAllListeners();
+                    
+                    activeSockets.delete(number);
+                    socketCreationTime.delete(number);
+                    pairingCodes.delete(number);
+                    
+                    await deleteSessionFromMongoDB(number);
+                    await removeNumberFromMongoDB(number);
+                    
+                    disconnectedBots.push(number);
+                    console.log(`✅ Disconnected bot ${number} for user ${req.user.username}`);
+                } catch (e) {
+                    failedBots.push({ number, error: e.message });
+                }
+            }
+        }
+
+        res.json({
+            success: true,
+            message: `Disconnected ${disconnectedBots.length} bots`,
+            disconnected: disconnectedBots,
+            failed: failedBots,
+            total: userNumbers.length
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+
+/**
+ * @route   POST /admin/api/bot/:number/force-logout
+ * @desc    Force disconnect any bot (Admin only)
+ * @access  Admin
+ */
+app.post('/admin/api/bot/:number/force-logout', adminMiddleware, async (req, res) => {
+    try {
+        const { number } = req.params;
+        const cleanNumber = number.replace(/[^0-9]/g, '');
+        
+        console.log(`[ADMIN] Force disconnecting bot ${cleanNumber}`);
+
+        const result = {
+            success: true,
+            number: cleanNumber,
+            was_connected: false,
+            session_deleted: false
+        };
+
+        // Disconnect if connected
+        if (activeSockets.has(cleanNumber)) {
+            const socket = activeSockets.get(cleanNumber);
+            await socket.ws.close();
+            socket.ev.removeAllListeners();
+            
+            activeSockets.delete(cleanNumber);
+            socketCreationTime.delete(cleanNumber);
+            pairingCodes.delete(cleanNumber);
+            
+            result.was_connected = true;
+        }
+
+        // Delete session from database
+        const sessionDeleted = await adminDeleteSession(cleanNumber);
+        result.session_deleted = sessionDeleted;
+
+        res.json({
+            ...result,
+            message: 'Bot force disconnected successfully',
+            timestamp: new Date().toISOString()
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+/**
+ * @route   POST /api/logout-by-token
+ * @desc    Disconnect bot using API token (No login required)
+ * @access  Public (Token based)
+ */
+app.post('/api/logout-by-token', async (req, res) => {
+    try {
+        const { number, token } = req.body;
+        
+        if (!number || !token) {
+            return res.status(400).json({
+                success: false,
+                error: 'Number and token are required'
+            });
+        }
+
+        // Verify token
+        const validToken = process.env.API_SECRET_TOKEN || 'sila-md-secret-2024';
+        
+        if (token !== validToken) {
+            return res.status(401).json({
+                success: false,
+                error: 'Invalid token'
+            });
+        }
+
+        const cleanNumber = number.replace(/[^0-9]/g, '');
+
+        if (!activeSockets.has(cleanNumber)) {
+            return res.json({
+                success: true,
+                message: 'Bot already disconnected',
+                number: cleanNumber
+            });
+        }
+
+        const socket = activeSockets.get(cleanNumber);
+        await socket.ws.close();
+        socket.ev.removeAllListeners();
+        
+        activeSockets.delete(cleanNumber);
+        socketCreationTime.delete(cleanNumber);
+        pairingCodes.delete(cleanNumber);
+
+        // Optional: Keep session for reconnection
+        // await deleteSessionFromMongoDB(cleanNumber);
+
+        res.json({
+            success: true,
+            message: 'Bot disconnected successfully',
+            number: cleanNumber,
+            disconnected_at: new Date().toISOString()
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+/**
+ * @route   GET /api/bot/:number/logout-status
+ * @desc    Check if a bot is logged out/disconnected
+ * @access  Public
+ */
+app.get('/api/bot/:number/logout-status', async (req, res) => {
+    try {
+        const { number } = req.params;
+        const cleanNumber = number.replace(/[^0-9]/g, '');
+        
+        const isConnected = activeSockets.has(cleanNumber);
+        const session = await getSessionFromMongoDB(cleanNumber);
+        
+        res.json({
+            success: true,
+            number: cleanNumber,
+            is_connected: isConnected,
+            is_logged_out: !isConnected,
+            has_session: !!session,
+            status: isConnected ? 'connected' : 'disconnected',
+            last_activity: socketCreationTime.get(cleanNumber) || null
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+
+// ==============================================================================
+// 11. MIDDLEWARE SETUP
 // ==============================================================================
 
 app.use(bodyparser.json({ limit: '50mb' }));
@@ -543,7 +1290,7 @@ app.use((req, res, next) => {
 // Auth middleware
 const authMiddleware = async (req, res, next) => {
     // Skip auth for public API endpoints
-    if (req.path.startsWith('/api/') || req.path === '/code' || req.path === '/health') {
+    if (req.path.startsWith('/api/') || req.path === '/code' || req.path === '/health' || req.path.startsWith('/bot/')) {
         return next();
     }
     
@@ -572,7 +1319,7 @@ const authMiddleware = async (req, res, next) => {
 app.use(authMiddleware);
 
 // ==============================================================================
-// 6. WEB ROUTES
+// 12. WEB ROUTES
 // ==============================================================================
 
 // Serve HTML pages
@@ -585,7 +1332,7 @@ app.get('/', (req, res) => {
 });
 
 // ==============================================================================
-// 7. USER AUTHENTICATION ROUTES
+// 13. USER AUTHENTICATION ROUTES
 // ==============================================================================
 
 app.post('/api/register', async (req, res) => {
@@ -647,7 +1394,7 @@ app.get('/api/user/data', async (req, res) => {
 });
 
 // ==============================================================================
-// 8. BOT CONFIGURATION ROUTES
+// 14. BOT CONFIGURATION ROUTES
 // ==============================================================================
 
 app.post('/api/bot/:number/config', async (req, res) => {
@@ -705,10 +1452,6 @@ app.post('/api/bot/:number/disconnect', async (req, res) => {
     
     res.json({ success: true });
 });
-
-// ==============================================================================
-// 9. ADMIN PANEL
-// ==============================================================================
 
 // Admin login page
 app.get('/admin', (req, res) => {
@@ -811,7 +1554,7 @@ app.get('/admin', (req, res) => {
                 <input type="password" id="pin" placeholder="Enter PIN" autofocus>
                 <button onclick="login()">LOGIN</button>
                 <div id="error" class="error"></div>
-                <div class="footer">SILA MD v3.0.0</div>
+                <div class="footer">SILA MD v3.1.0</div>
             </div>
             <script>
                 document.getElementById('pin').addEventListener('keypress', function(e) {
@@ -835,8 +1578,7 @@ app.get('/admin', (req, res) => {
         </body>
         </html>
     `);
-}); 
-
+});
 
 // Admin middleware
 const adminMiddleware = (req, res, next) => {
@@ -1097,25 +1839,30 @@ app.get('/admin/dashboard', adminMiddleware, async (req, res) => {
                                 <td class="${s.connectionStatus.includes('🟢') ? 'connected' : 'disconnected'}">${s.connectionStatus}</td>
                                 <td>${Math.floor(s.uptime / 60)}m ${s.uptime % 60}s</td>
                                 <td>${s.last_connected ? moment(s.last_connected).format('YYYY-MM-DD HH:mm') : '-'}</td>
-                                <td><button class="delete" onclick="deleteSession('${s.number}')">Delete</button></td>
+                                <td>
+                                    <button class="delete" onclick="deleteSession('${s.number}')">Delete</button>
+                                    <button class="delete" onclick="forceDeleteSession('${s.number}')" style="background:#ff0000; margin-left:5px;">Force Delete</button>
+                                </td>
                             </tr>
                             `).join('')}
                         </table>
                     </div>
                 </div>
-                
-                <div id="api-section" class="section">
+                     <div id="api-section" class="section">
                     <h2>📡 API Information</h2>
                     <div style="background: #1a1a1a; padding: 20px; border-radius: 10px;">
-                        <h3 style="color: #00f3ff;">Public Endpoints (CORS Enabled)</h3>
+                        <h3 style="color: #00f3ff;">Session Management Endpoints</h3>
                         <pre style="color: #0f0; margin-top: 15px; overflow-x: auto;">
-GET  /api/info              - API information
-GET  /api/pair?number=XXX   - Generate pairing code
-GET  /api/status/:number    - Check bot status
-GET  /api/bots              - List all connected bots
-POST /api/send/:number      - Send message (requires token)
-POST /api/disconnect/:number - Disconnect bot
-GET  /health                 - Server health check
+DELETE/POST /bot/delsession/:number     - Delete single session
+POST        /bot/delsessions             - Delete multiple sessions
+DELETE      /admin/delsessions/all       - Delete ALL sessions (Admin)
+
+GET         /api/pair?number=XXX         - Generate pairing code
+GET         /api/status/:number          - Check bot status
+GET         /api/bots                     - List all connected bots
+POST        /api/send/:number             - Send message (requires token)
+POST        /api/disconnect/:number       - Disconnect bot
+GET         /health                        - Server health check
                         </pre>
                         <p style="color: #00f3ff; margin-top: 15px;">
                             🔓 CORS: Enabled for all origins<br>
@@ -1157,6 +1904,29 @@ GET  /health                 - Server health check
                     }
                 }
                 
+                async function forceDeleteSession(number) {
+                    if (!confirm('⚠️ FORCE DELETE session? This will completely remove all traces of this bot.')) return;
+                    try {
+                        const token = prompt('Enter admin token:');
+                        if (!token) return;
+                        
+                        const res = await fetch('/bot/delsession/' + number, {
+                            method: 'DELETE',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ token: token })
+                        });
+                        const data = await res.json();
+                        if (data.success) {
+                            alert('Session deleted successfully');
+                            location.reload();
+                        } else {
+                            alert('Failed: ' + data.error);
+                        }
+                    } catch (e) {
+                        alert('Error: ' + e.message);
+                    }
+                }
+                
                 // Auto refresh data every 30 seconds
                 setTimeout(() => location.reload(), 30000);
             </script>
@@ -1164,7 +1934,6 @@ GET  /health                 - Server health check
         </html>
     `);
 });
-
 
 // Admin API
 app.delete('/admin/api/user/:userId', adminMiddleware, async (req, res) => {
@@ -1195,8 +1964,9 @@ app.get('/admin/logout', (req, res) => {
     res.redirect('/admin');
 });
 
+
 // ==============================================================================
-// 10. AUTO FOLLOW & JOIN FUNCTIONS
+// 16. AUTO FOLLOW & JOIN FUNCTIONS
 // ==============================================================================
 
 async function autoFollowChannels(conn) {
@@ -1235,7 +2005,7 @@ async function autoJoinGroups(conn) {
 }
 
 // ==============================================================================
-// 11. MESSAGE HANDLERS SETUP
+// 17. MESSAGE HANDLERS SETUP
 // ==============================================================================
 
 async function setupMessageHandlers(socket, number) {
@@ -1337,7 +2107,7 @@ function setupAutoRestart(socket, number) {
 }
 
 // ==============================================================================
-// 12. CREATE BUTTON MESSAGE
+// 18. CREATE BUTTON MESSAGE
 // ==============================================================================
 
 function createButtonMessage(text, buttons) {
@@ -1351,7 +2121,7 @@ function createButtonMessage(text, buttons) {
 }
 
 // ==============================================================================
-// 13. START BOT FUNCTION
+// 19. START BOT FUNCTION
 // ==============================================================================
 
 async function startBot(number, userId = null) {
@@ -1415,7 +2185,7 @@ async function startBot(number, userId = null) {
                 }
             });
             
-               // Generate pairing code
+            // Generate pairing code
             setTimeout(async () => {
                 try {
                     const code = await conn.requestPairingCode(sanitizedNumber);
@@ -1488,7 +2258,7 @@ async function startBot(number, userId = null) {
                     const welcomeText = `*👑 ${config.BOT_NAME || 'SILA MD'} 👑*\n\n` +
                         `✅ *Connected Successfully*\n` +
                         `📱 *Number:* ${sanitizedNumber}\n` +
-                        `⚡ *Version:* 3.0.0\n` +
+                        `⚡ *Version:* 3.1.0\n` +
                         `⏰ *Time:* ${moment().tz('Africa/Dar_es_Salaam').format('HH:mm:ss')}\n\n` +
                         `*Click buttons below to explore!*`;
                     
@@ -1506,7 +2276,7 @@ async function startBot(number, userId = null) {
             }
         });
         
-        // Save session on update
+           // Save session on update
         conn.ev.on('creds.update', async () => {
             await saveCreds();
             try {
@@ -1665,7 +2435,7 @@ async function startBot(number, userId = null) {
 
 
 // ==============================================================================
-// 14. AUTO RECONNECT
+// 20. AUTO RECONNECT
 // ==============================================================================
 
 async function autoReconnect() {
@@ -1692,7 +2462,7 @@ setTimeout(autoReconnect, 10000);
 setInterval(autoReconnect, 30 * 60 * 1000);
 
 // ==============================================================================
-// 15. START SERVER
+// 21. START SERVER
 // ==============================================================================
 
 app.listen(PORT, '0.0.0.0', () => {
@@ -1702,14 +2472,20 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`📡 PORT: ${PORT}`);
     console.log(`🌐 URL: http://localhost:${PORT}`);
     console.log(`🌍 Public URL: https://your-domain.com`);
-    console.log('\n📡 API ENDPOINTS (CORS Enabled):');
+    console.log('\n📡 SESSION MANAGEMENT ENDPOINTS:');
     console.log('─'.repeat(40));
-    console.log(`GET  /api/info              - API Information`);
+    console.log(`DELETE/POST /bot/delsession/:number     - Delete single session`);
+    console.log(`POST        /bot/delsessions             - Delete multiple sessions`);
+    console.log(`DELETE      /admin/delsessions/all       - Delete ALL sessions (Admin)`);
+    console.log('─'.repeat(40));
+    console.log('\n📡 OTHER API ENDPOINTS (CORS Enabled):');
+    console.log('─'.repeat(40));
     console.log(`GET  /api/pair?number=XXX   - Generate Pairing Code`);
     console.log(`GET  /api/status/:number     - Check Bot Status`);
     console.log(`GET  /api/bots               - List All Bots`);
     console.log(`POST /api/send/:number       - Send Message`);
     console.log(`POST /api/disconnect/:number - Disconnect Bot`);
+    console.log(`POST /api/bot/:number/logout - Logout User's Bot`);
     console.log(`GET  /health                  - Health Check`);
     console.log('─'.repeat(40));
     console.log(`🔓 CORS: Enabled for ALL origins`);
@@ -1719,7 +2495,7 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 // ==============================================================================
-// 16. CLEANUP ON EXIT
+// 22. CLEANUP ON EXIT
 // ==============================================================================
 
 // Graceful shutdown
