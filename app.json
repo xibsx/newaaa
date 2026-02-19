@@ -8,11 +8,4 @@
   "buildpacks": [
     { "url": "https://github.com/heroku/heroku-buildpack-nodejs#latest" }
   ],
-  "env": {      
-    "MESSAGE": {
-      "description": "Msg Attached With Session ID",
-      "value": "🔰 BY || UMAR 🔰",
-      "required": false 
-    }
-  }
 }
