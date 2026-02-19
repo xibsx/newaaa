@@ -1,11 +1,11 @@
 {
-  "name": "♥️GOLD MD PAIR QR♥️",
-  "description": "SESSION ID GENERATOR FOR WHATSAPP BOTS",
-  "logo": "https://i.ibb.co/wspzc9t/IMG-20240328-WA0000.jpg",
-  "repository": "https://github.com/1122bot/1X-MINI",
-  "keywords": ["@BiLaLTeCh05"],
-  "success_url": "/", 
+  "name": "my-node-app",
+  "description": "A simple Node.js app on Heroku",
+  "repository": "https://github.com/username/my-node-app",
+  "keywords": ["node", "express", "heroku"],
   "buildpacks": [
-    { "url": "https://github.com/heroku/heroku-buildpack-nodejs#latest" }
-  ],
+    {
+      "url": "heroku/nodejs"
+    }
+  ]
 }
